@@ -1,0 +1,8 @@
+{
+  "name": "amigue-secrete-ugly-t-shirt-night",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": { "node": "22.x" },
+  "dependencies": { "@supabase/supabase-js": "^2.52.0" }
+}
