@@ -1,4 +1,4 @@
-# Amigue Secrete — Ugly T-shit night
+# Amigue Secrete — Ugly T-shirt night
 
 Static site + Vercel serverless API + Supabase Postgres. The original HTML is kept at `amiguis-grid.html`; the public page at `public/index.html` preserves its embedded cartoon stickers and current copy.
 
