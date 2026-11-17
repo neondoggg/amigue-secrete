@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     } else if (action === 'read') {
       if (typeof data.code !== 'string') return fail(res, 400, 'Código inválido.');
       const credential = data.credential;
-      if (credential !== undefined && typeof credential !== 'string') return fail(res, 400, 'Credencial inválida.');
+      if (credential !== undefined && credential !== null && typeof credential !== 'string') return fail(res, 400, 'Credencial inválida.');
       rpc = 'read_group'; args = { p_code: data.code.trim().toUpperCase(), p_credential_hash: credential ? hash(credential) : null };
     } else if (action === 'draw') {
       if (typeof data.code !== 'string' || typeof data.ownerToken !== 'string') return fail(res, 401, 'Apenas quem criou o grupo pode iniciar o sorteio.');
