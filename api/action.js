@@ -45,6 +45,10 @@ export default async function handler(req, res) {
     return res.status(200).json(result.data);
   } catch (error) {
     const message = String(error?.message || 'Erro interno.');
+    console.error('[api/action] backend failure', {
+      code: error?.code || null,
+      message,
+    });
     const known = ['Grupo não encontrado.', 'Esse nome já está na sala.', 'Código inválido.', 'Entre na sala para ver seu resultado.', 'Entre na sala antes de sortear.', 'É preciso ter pelo menos duas pessoas para sortear.'];
     return fail(res, known.includes(message) ? 400 : 500, known.includes(message) ? message : 'Não foi possível concluir. Tente novamente.');
   }
