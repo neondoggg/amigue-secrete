@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       code: error?.code || null,
       message,
     });
-    const known = ['Grupo não encontrado.', 'Esse nome já está na sala.', 'Tamanho de camisa inválido.', 'Apenas quem criou o grupo pode iniciar o sorteio.', 'Código inválido.', 'Entre na sala para ver seu resultado.', 'É preciso ter pelo menos duas pessoas para sortear.'];
+    const known = ['Grupo não encontrado.', 'Esse nome já está na sala.', 'Tamanho de camisa inválido.', 'Apenas quem criou o grupo pode iniciar o sorteio.', 'Código inválido.', 'Entre na sala para ver seu resultado.', 'É preciso ter pelo menos nove pessoas para sortear.'];
     return fail(res, known.includes(message) ? 400 : 500, known.includes(message) ? message : 'Não foi possível concluir. Tente novamente.');
   }
 }

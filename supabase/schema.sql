@@ -90,7 +90,7 @@ begin
   if g.drawn_at is not null then return jsonb_build_object('drawn',true); end if;
   select array_agg(id order by id) into ids from public.secret_participants where group_id=g.id;
   n:=coalesce(array_length(ids,1),0);
-  if n<2 then raise exception 'É preciso ter pelo menos duas pessoas para sortear.'; end if;
+  if n<9 then raise exception 'É preciso ter pelo menos nove pessoas para sortear.'; end if;
   loop
     tries:=tries+1; shuffled:=ids;
     for i in reverse n..2 loop
