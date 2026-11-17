@@ -25,6 +25,10 @@ create table if not exists public.secret_participants (
   unique (group_id, token_hash)
 );
 alter table public.secret_participants add column if not exists shirt_size text;
+update public.secret_participants p
+set name='Felipe V.'
+where lower(trim(p.name))='felipe'
+  and not exists(select 1 from public.secret_participants other where other.group_id=p.group_id and lower(trim(other.name))='felipe v.');
 update public.secret_groups g
 set creator_token_hash=p.token_hash
 from public.secret_participants p
@@ -64,14 +68,15 @@ begin
 end $$;
 
 drop function if exists public.read_group(text);
-create or replace function public.read_group(p_code text,p_credential_hash text)
+drop function if exists public.read_group(text,text);
+create or replace function public.read_group(p_code text,p_owner_token_hash text,p_participant_token_hash text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare g public.secret_groups; names jsonb;
 begin
   select * into g from public.secret_groups where code=upper(p_code);
   if not found then raise exception 'Grupo não encontrado.'; end if;
   select coalesce(jsonb_agg(name || case when shirt_size is null or shirt_size='' then '' else ' - Camisa ' || shirt_size end order by joined_at),'[]'::jsonb) into names from public.secret_participants where group_id=g.id;
-  return jsonb_build_object('code',g.code,'name',g.name,'date',g.exchange_date,'budget',g.budget,'location',g.location,'rules',g.rules,'participants',names,'drawn',g.drawn_at is not null,'isOwner',g.creator_token_hash is not null and g.creator_token_hash=p_credential_hash);
+  return jsonb_build_object('code',g.code,'name',g.name,'date',g.exchange_date,'budget',g.budget,'location',g.location,'rules',g.rules,'participants',names,'drawn',g.drawn_at is not null,'isOwner',g.creator_token_hash is not null and g.creator_token_hash=p_owner_token_hash,'isMember',p_participant_token_hash is not null and exists(select 1 from public.secret_participants where group_id=g.id and token_hash=p_participant_token_hash));
 end $$;
 
 drop function if exists public.draw_group(text,text);
@@ -118,11 +123,11 @@ end $$;
 
 revoke all on function public.create_group(text,text,text,text,text,text) from public, anon, authenticated;
 revoke all on function public.join_group(text,text,text,text) from public, anon, authenticated;
-revoke all on function public.read_group(text,text) from public, anon, authenticated;
+revoke all on function public.read_group(text,text,text) from public, anon, authenticated;
 revoke all on function public.draw_group(text,text) from public, anon, authenticated;
 revoke all on function public.get_assignment(text,text) from public, anon, authenticated;
 grant execute on function public.create_group(text,text,text,text,text,text) to service_role;
 grant execute on function public.join_group(text,text,text,text) to service_role;
-grant execute on function public.read_group(text,text) to service_role;
+grant execute on function public.read_group(text,text,text) to service_role;
 grant execute on function public.draw_group(text,text) to service_role;
 grant execute on function public.get_assignment(text,text) to service_role;
