@@ -78,7 +78,11 @@ begin
     for i in reverse n..2 loop
       j:=1+floor(random()*i)::int; tmp:=shuffled[i]; shuffled[i]:=shuffled[j]; shuffled[j]:=tmp;
     end loop;
-    exit when not exists(select 1 from generate_subscripts(ids,1) as x(i) where ids[i]=shuffled[i]);
+    exit when not exists(
+      select 1
+      from generate_subscripts(ids, 1) as gs(subscript)
+      where ids[gs.subscript] = shuffled[gs.subscript]
+    );
     if tries>1000 then raise exception 'Não foi possível concluir o sorteio.'; end if;
   end loop;
   for i in 1..n loop update public.secret_participants set receiver_id=shuffled[i] where id=ids[i]; end loop;
