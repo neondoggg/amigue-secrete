@@ -10,23 +10,32 @@ create table if not exists public.secret_groups (
   location text not null,
   rules text not null,
   drawn_at timestamptz,
+  creator_token_hash text,
   created_at timestamptz not null default now()
 );
+alter table public.secret_groups add column if not exists creator_token_hash text;
 create table if not exists public.secret_participants (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.secret_groups(id) on delete cascade,
   name text not null,
+  shirt_size text,
   token_hash text not null,
   receiver_id uuid references public.secret_participants(id),
   joined_at timestamptz not null default now(),
   unique (group_id, token_hash)
 );
+alter table public.secret_participants add column if not exists shirt_size text;
+update public.secret_groups g
+set creator_token_hash=p.token_hash
+from public.secret_participants p
+where g.code='99905361' and p.group_id=g.id and lower(p.name)=lower('Felipe V.') and g.creator_token_hash is null;
 create unique index if not exists secret_participant_names on public.secret_participants(group_id, lower(name));
 alter table public.secret_groups enable row level security;
 alter table public.secret_participants enable row level security;
 revoke all on public.secret_groups, public.secret_participants from anon, authenticated;
 
-create or replace function public.create_group(p_name text,p_date text,p_budget text,p_location text,p_rules text)
+drop function if exists public.create_group(text,text,text,text,text);
+create or replace function public.create_group(p_name text,p_date text,p_budget text,p_location text,p_rules text,p_owner_token_hash text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare v_code text; v_date date;
 begin
@@ -35,12 +44,13 @@ begin
     v_code := upper(encode(extensions.gen_random_bytes(4),'hex'));
     exit when not exists(select 1 from public.secret_groups where code=v_code);
   end loop;
-  insert into public.secret_groups(code,name,exchange_date,budget,location,rules)
-  values(v_code,p_name,v_date,p_budget,p_location,p_rules);
+  insert into public.secret_groups(code,name,exchange_date,budget,location,rules,creator_token_hash)
+  values(v_code,p_name,v_date,p_budget,p_location,p_rules,p_owner_token_hash);
   return jsonb_build_object('code',v_code);
 end $$;
 
-create or replace function public.join_group(p_code text,p_name text,p_token_hash text)
+drop function if exists public.join_group(text,text,text);
+create or replace function public.join_group(p_code text,p_name text,p_token_hash text,p_shirt_size text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare v_group public.secret_groups; v_id uuid;
 begin
@@ -48,27 +58,30 @@ begin
   if not found then raise exception 'Grupo não encontrado.'; end if;
   if v_group.drawn_at is not null then raise exception 'O sorteio já foi realizado; novas entradas estão fechadas.'; end if;
   if exists(select 1 from public.secret_participants where group_id=v_group.id and lower(name)=lower(trim(p_name))) then raise exception 'Esse nome já está na sala.'; end if;
-  insert into public.secret_participants(group_id,name,token_hash) values(v_group.id,trim(p_name),p_token_hash) returning id into v_id;
+  if p_shirt_size is not null and p_shirt_size not in ('PP','P','M','G','GG','XG') then raise exception 'Tamanho de camisa inválido.'; end if;
+  insert into public.secret_participants(group_id,name,shirt_size,token_hash) values(v_group.id,trim(p_name),p_shirt_size,p_token_hash) returning id into v_id;
   return jsonb_build_object('id',v_id,'name',trim(p_name));
 end $$;
 
-create or replace function public.read_group(p_code text)
+drop function if exists public.read_group(text);
+create or replace function public.read_group(p_code text,p_credential_hash text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare g public.secret_groups; names jsonb;
 begin
   select * into g from public.secret_groups where code=upper(p_code);
   if not found then raise exception 'Grupo não encontrado.'; end if;
-  select coalesce(jsonb_agg(name order by joined_at),'[]'::jsonb) into names from public.secret_participants where group_id=g.id;
-  return jsonb_build_object('code',g.code,'name',g.name,'date',g.exchange_date,'budget',g.budget,'location',g.location,'rules',g.rules,'participants',names,'drawn',g.drawn_at is not null);
+  select coalesce(jsonb_agg(name || case when shirt_size is null or shirt_size='' then '' else ' - Camisa ' || shirt_size end order by joined_at),'[]'::jsonb) into names from public.secret_participants where group_id=g.id;
+  return jsonb_build_object('code',g.code,'name',g.name,'date',g.exchange_date,'budget',g.budget,'location',g.location,'rules',g.rules,'participants',names,'drawn',g.drawn_at is not null,'isOwner',g.creator_token_hash is not null and g.creator_token_hash=p_credential_hash);
 end $$;
 
-create or replace function public.draw_group(p_code text,p_token_hash text)
+drop function if exists public.draw_group(text,text);
+create or replace function public.draw_group(p_code text,p_owner_token_hash text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare g public.secret_groups; ids uuid[]; shuffled uuid[]; n int; i int; j int; tries int:=0; tmp uuid;
 begin
   select * into g from public.secret_groups where code=upper(p_code) for update;
   if not found then raise exception 'Grupo não encontrado.'; end if;
-  if not exists(select 1 from public.secret_participants where group_id=g.id and token_hash=p_token_hash) then raise exception 'Entre na sala antes de sortear.'; end if;
+  if g.creator_token_hash is null or g.creator_token_hash<>p_owner_token_hash then raise exception 'Apenas quem criou o grupo pode iniciar o sorteio.'; end if;
   if g.drawn_at is not null then return jsonb_build_object('drawn',true); end if;
   select array_agg(id order by id) into ids from public.secret_participants where group_id=g.id;
   n:=coalesce(array_length(ids,1),0);
@@ -103,13 +116,13 @@ begin
   return jsonb_build_object('drawn',true,'receiver',receiver);
 end $$;
 
-revoke all on function public.create_group(text,text,text,text,text) from public, anon, authenticated;
-revoke all on function public.join_group(text,text,text) from public, anon, authenticated;
-revoke all on function public.read_group(text) from public, anon, authenticated;
+revoke all on function public.create_group(text,text,text,text,text,text) from public, anon, authenticated;
+revoke all on function public.join_group(text,text,text,text) from public, anon, authenticated;
+revoke all on function public.read_group(text,text) from public, anon, authenticated;
 revoke all on function public.draw_group(text,text) from public, anon, authenticated;
 revoke all on function public.get_assignment(text,text) from public, anon, authenticated;
-grant execute on function public.create_group(text,text,text,text,text) to service_role;
-grant execute on function public.join_group(text,text,text) to service_role;
-grant execute on function public.read_group(text) to service_role;
+grant execute on function public.create_group(text,text,text,text,text,text) to service_role;
+grant execute on function public.join_group(text,text,text,text) to service_role;
+grant execute on function public.read_group(text,text) to service_role;
 grant execute on function public.draw_group(text,text) to service_role;
 grant execute on function public.get_assignment(text,text) to service_role;
